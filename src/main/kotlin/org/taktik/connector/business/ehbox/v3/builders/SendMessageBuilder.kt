@@ -21,7 +21,6 @@
 package org.taktik.connector.business.ehbox.v3.builders
 
 import org.taktik.connector.business.ehbox.api.domain.DocumentMessage
-import org.taktik.connector.business.ehbox.api.domain.NewsMessage
 import org.taktik.connector.business.ehbox.api.domain.exception.EhboxBusinessConnectorException
 import org.taktik.connector.technical.exception.TechnicalConnectorException
 import be.fgov.ehealth.ehbox.consultation.protocol.v3.Message
@@ -29,17 +28,13 @@ import be.fgov.ehealth.ehbox.publication.protocol.v3.SendMessageRequest
 import java.io.IOException
 import java.security.KeyStore
 
-import org.bouncycastle.cms.CMSException
+import java.util.UUID
 
 interface SendMessageBuilder {
-    @Throws(
-        IOException::class,
-        EhboxBusinessConnectorException::class,
-        TechnicalConnectorException::class,
-        CMSException::class
-    )
-    fun buildMessage(keystore: KeyStore, passPhrase: String, var1: DocumentMessage<Message>): SendMessageRequest
-
     @Throws(IOException::class, EhboxBusinessConnectorException::class, TechnicalConnectorException::class)
-    fun buildMessage(keystore: KeyStore, passPhrase: String, var1: NewsMessage<Message>): SendMessageRequest
+    fun buildMessage(keystoreId: UUID,
+        keystore: KeyStore,
+        quality: String,
+        passPhrase: String,
+        document: DocumentMessage<Message>): SendMessageRequest
 }

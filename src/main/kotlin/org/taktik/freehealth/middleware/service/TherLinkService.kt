@@ -20,8 +20,11 @@
 
 package org.taktik.freehealth.middleware.service
 
+import org.taktik.connector.business.therlink.domain.HasTherapeuticLinkMessage
+import org.taktik.connector.business.therlink.domain.ProofTypeValues
 import org.taktik.connector.business.therlink.domain.TherapeuticLinkMessage
 import org.taktik.connector.business.therlink.domain.TherapeuticLink
+import org.taktik.connector.technical.exception.TechnicalConnectorException
 import java.util.*
 
 interface TherLinkService {
@@ -70,7 +73,8 @@ interface TherLinkService {
         end: Date?,
         therLinkType: String?,
         comment: String?,
-        sign: Boolean?
+        sign: Boolean?,
+        proofType: ProofTypeValues?
     ): TherapeuticLinkMessage
 
     fun revokeLink(
@@ -90,7 +94,8 @@ interface TherLinkService {
         end: Date?,
         therLinkType: String?,
         comment: String?,
-        sign: Boolean?
+        sign: Boolean?,
+        proofType: ProofTypeValues?
     ): TherapeuticLinkMessage?
 
     fun revokeLink(
@@ -98,6 +103,23 @@ interface TherLinkService {
         tokenId: UUID,
         passPhrase: String,
         therLink: TherapeuticLink,
-        sign: Boolean?
+        sign: Boolean?,
+        proofType: ProofTypeValues?
     ): TherapeuticLinkMessage
+
+    fun hasTherapeuticLink(keystoreId: UUID,
+        tokenId: UUID,
+        passPhrase: String,
+        hcpNihii: String,
+        hcpSsin: String,
+        hcpFirstName: String,
+        hcpLastName: String,
+        patientSsin: String,
+        patientFirstName: String,
+        patientLastName: String,
+        eidCardNumber: String?,
+        isiCardNumber: String?,
+        startDate: Date?,
+        endDate: Date?,
+        therLinkType: String?): HasTherapeuticLinkMessage?
 }

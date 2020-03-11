@@ -22,14 +22,13 @@ package org.taktik.freehealth.middleware.service
 
 import be.fgov.ehealth.hubservices.core.v3.*
 import be.fgov.ehealth.standards.kmehr.schema.v1.Kmehrmessage
-import org.taktik.connector.business.therlink.domain.TherapeuticLink
 import org.taktik.connector.business.therlink.domain.TherapeuticLinkMessage
 import org.taktik.freehealth.middleware.domain.consent.Consent
 import org.taktik.freehealth.middleware.dto.common.Gender
-import org.taktik.freehealth.middleware.domain.hub.HcPartyConsent
+import org.taktik.freehealth.middleware.dto.hub.HcPartyConsentDto
 import org.taktik.freehealth.middleware.domain.common.Patient
-import org.taktik.freehealth.middleware.domain.hub.TransactionSummary
-import org.taktik.freehealth.middleware.dto.therlink.TherapeuticLinkMessageDto
+import org.taktik.freehealth.middleware.domain.hub.PutTransactionResponse
+import org.taktik.freehealth.middleware.dto.hub.TransactionSummaryDto
 import java.time.Instant
 import java.time.LocalDateTime
 import java.util.*
@@ -46,7 +45,7 @@ interface HubService {
         hcpSsin: String,
         hcpZip: String,
         hubPackageId: String?
-    ): HcPartyConsent?
+    ): HcPartyConsentDto?
 
     fun putPatient(
         endpoint: String,
@@ -92,6 +91,7 @@ interface HubService {
         hcpZip: String,
         patientSsin: String,
         patientEidCardNumber: String?,
+        patientIsiCardNumber: String?,
         hubPackageId: String?
     ): PutPatientConsentResponse
 
@@ -121,6 +121,7 @@ interface HubService {
         hcpZip: String,
         patientSsin: String,
         patientEidCardNumber: String?,
+        patientIsiCardNumber: String?,
         hubPackageId: String?
     ): PutTherapeuticLinkResponse
 
@@ -159,7 +160,7 @@ interface HubService {
         authorNihii: String?,
         authorSsin: String?,
         isGlobal: Boolean
-    ): List<TransactionSummary>
+    ): List<TransactionSummaryDto>
 
     fun putTransaction(
         endpoint: String,
@@ -176,7 +177,7 @@ interface HubService {
         ssin: String,
         transaction: ByteArray,
         hubPackageId: String?
-    ): TransactionIdType
+    ): PutTransactionResponse
 
     fun getTransaction(
         endpoint: String,
@@ -324,4 +325,32 @@ interface HubService {
         accessSsin: String?, //hcp to allow/disallow
         hubPackageId: String?
     ): RevokeAccessRightResponse
+
+    fun revokeTherapeuticLink(endpoint: String,
+        keystoreId: UUID,
+        tokenId: UUID,
+        passPhrase: String,
+        hcpLastName: String,
+        hcpFirstName: String,
+        hcpNihii: String,
+        hcpSsin: String,
+        hcpZip: String,
+        patientSsin: String,
+        patientEidCardNumber: String?,
+        patientIsiCardNumber: String?,
+        hubPackageId: String?): RevokeTherapeuticLinkResponse
+
+    fun revokePatientConsent(endpoint: String,
+        keystoreId: UUID,
+        tokenId: UUID,
+        passPhrase: String,
+        hcpLastName: String,
+        hcpFirstName: String,
+        hcpNihii: String,
+        hcpSsin: String,
+        hcpZip: String,
+        patientSsin: String,
+        patientEidCardNumber: String?,
+        patientIsiCardNumber: String?,
+        hubPackageId: String?): RevokePatientConsentResponse
 }

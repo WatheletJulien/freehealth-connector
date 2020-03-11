@@ -21,6 +21,7 @@
 package org.taktik.freehealth.middleware.web.controllers
 
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController
 import org.taktik.freehealth.middleware.dto.genins.InsurabilityInfoDto
 import org.taktik.freehealth.middleware.exception.MissingTokenException
 import org.taktik.freehealth.middleware.service.GenInsService
+import java.time.Instant
 import java.util.*
 import javax.servlet.http.HttpServletRequest
 
@@ -44,7 +46,13 @@ class GenInsController(val genInsService: GenInsService) {
     @ResponseBody
     fun handleBadRequest(req: HttpServletRequest, ex: Exception): String = ex.message ?: "unknown reason"
 
-    @GetMapping("/{ssin}")
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    @ExceptionHandler(javax.xml.ws.soap.SOAPFaultException::class)
+    @ResponseBody
+
+fun handleBadRequest(req: HttpServletRequest, ex: javax.xml.ws.soap.SOAPFaultException): String = ex.message ?: "unknown reason"
+
+@GetMapping("/{ssin}", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun getGeneralInsurability(
         @PathVariable ssin: String,
         @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID,
@@ -58,7 +66,7 @@ class GenInsController(val genInsService: GenInsService) {
         @RequestParam(required = false) endDate: Long?,
         @RequestParam(required = false) hospitalized: Boolean?
     ): InsurabilityInfoDto {
-        val startDate: Date = date?.let { Date(date) } ?: Date()
+        val startDate: Instant = date?.let { Instant.ofEpochMilli(it) } ?: Instant.now()
         return genInsService.getGeneralInsurabity(keystoreId = keystoreId,
                                                   tokenId = tokenId,
                                                   hcpQuality = hcpQuality ?: "doctor",
@@ -70,11 +78,11 @@ class GenInsController(val genInsService: GenInsService) {
                                                   io = null,
                                                   ioMembership = null,
                                                   startDate = startDate,
-                                                  endDate = endDate?.let { Date(it) } ?: startDate,
+                                                  endDate = endDate?.let { Instant.ofEpochMilli(it) } ?: startDate,
                                                   hospitalized = hospitalized ?: false)
     }
 
-    @GetMapping("/{io}/{ioMembership}")
+    @GetMapping("/{io}/{ioMembership}", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun getGeneralInsurabilityByMembership(
         @PathVariable io: String,
         @PathVariable ioMembership: String,
@@ -89,7 +97,7 @@ class GenInsController(val genInsService: GenInsService) {
         @RequestParam(required = false) endDate: Long?,
         @RequestParam(required = false) hospitalized: Boolean?
     ): InsurabilityInfoDto {
-        val startDate: Date = date?.let { Date(date) } ?: Date()
+        val startDate: Instant = date?.let { Instant.ofEpochMilli(it) } ?: Instant.now()
         return genInsService.getGeneralInsurabity(keystoreId = keystoreId,
                                                   tokenId = tokenId,
                                                   hcpQuality = hcpQuality ?: "doctor",
@@ -101,7 +109,7 @@ class GenInsController(val genInsService: GenInsService) {
                                                   io = io,
                                                   ioMembership = ioMembership,
                                                   startDate = startDate,
-                                                  endDate = endDate?.let { Date(it) } ?: startDate,
+                                                  endDate = endDate?.let { Instant.ofEpochMilli(it) } ?: startDate,
                                                   hospitalized = hospitalized ?: false)
     }
 }

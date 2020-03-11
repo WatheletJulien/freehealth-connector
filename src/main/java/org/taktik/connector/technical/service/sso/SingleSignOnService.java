@@ -2,9 +2,8 @@ package org.taktik.connector.technical.service.sso;
 
 import org.taktik.connector.technical.enumeration.SsoProfile;
 import org.taktik.connector.technical.exception.TechnicalConnectorException;
+import org.taktik.connector.technical.service.sts.security.SAMLToken;
 
 public interface SingleSignOnService {
-   void signin(SsoProfile var1, String var2) throws TechnicalConnectorException;
-
-   void signin(SsoProfile var1) throws TechnicalConnectorException;
+   String signin(SsoProfile profile, SAMLToken samlToken) throws TechnicalConnectorException;
 }

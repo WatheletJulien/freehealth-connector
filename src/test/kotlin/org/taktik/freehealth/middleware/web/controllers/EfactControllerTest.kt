@@ -19,18 +19,7 @@ import org.taktik.freehealth.middleware.domain.common.Insurability
 import org.taktik.freehealth.middleware.domain.common.InsuranceParameter
 import org.taktik.freehealth.middleware.domain.common.Patient
 import org.taktik.freehealth.middleware.dto.common.Gender
-import org.taktik.freehealth.middleware.dto.efact.EIDItem
-import org.taktik.freehealth.middleware.dto.efact.EfactErrorMessage
-import org.taktik.freehealth.middleware.dto.efact.EfactMessage
-import org.taktik.freehealth.middleware.dto.efact.EfactSendResponse
-import org.taktik.freehealth.middleware.dto.efact.Invoice
-import org.taktik.freehealth.middleware.dto.efact.InvoiceItem
-import org.taktik.freehealth.middleware.dto.efact.InvoiceSender
-import org.taktik.freehealth.middleware.dto.efact.InvoicesBatch
-import org.taktik.freehealth.middleware.dto.efact.InvoicingPrescriberCode
-import org.taktik.freehealth.middleware.dto.efact.InvoicingSideCode
-import org.taktik.freehealth.middleware.dto.efact.InvoicingTimeOfDay
-import org.taktik.freehealth.middleware.dto.efact.InvoicingTreatmentReasonCode
+import org.taktik.freehealth.middleware.dto.efact.*
 import org.taktik.freehealth.middleware.dto.etarif.TarificationConsultationResult
 import org.taktik.freehealth.middleware.dto.genins.InsurabilityInfoDto
 import org.taktik.freehealth.middleware.format.efact.BelgianInsuranceInvoicingFormatReader
@@ -58,6 +47,8 @@ abstract class EfactAbstractTest : EhealthTest() {
     private var sendNumber = 805
 
     val phoneSender = "0479905510"
+    val bicSender = ""
+    val ibanSender = ""
 
     private val DMG_NIHIIS_FOR_NISS2: MutableMap<String, String> = HashMap()
     private val NISS1 = "NISS1"
@@ -259,6 +250,7 @@ abstract class EfactAbstractTest : EhealthTest() {
         invoiceItem.doctorSupplement = doctorSupplement.toLong()
         invoiceItem.prescriberNorm = InvoicingPrescriberCode.None
         invoiceItem.personalInterventionCoveredByThirdPartyCode = 0
+        invoiceItem.transplantationCode = InvoicingTransplantationCode.None
         invoiceItem.sideCode = InvoicingSideCode.None
         invoiceItem.override3rdPayerCode = override3rdPayerCode
         invoiceItem.timeOfDay = InvoicingTimeOfDay.Other

@@ -86,7 +86,7 @@ class ConsentServiceImpl(val stsService: STSService) : ConsentService {
             )
         val consentRequest = RequestObjectBuilderFactory.requestObjectBuilder.createPutRequest(author, consentType)
         val response =
-            org.taktik.connector.technical.ws.ServiceFactory.getGenericWsSender().send(getPort(samlToken).apply {
+            ServiceFactory.getGenericWsSender().send(getPort(samlToken).apply {
                 setPayload(consentRequest as Any)
                 setSoapAction("urn:be:fgov:ehealth:consent:protocol:v1:PutPatientConsent")
             }).asObject(PutPatientConsentResponse::class.java) as PutPatientConsentResponse
@@ -258,7 +258,7 @@ class ConsentServiceImpl(val stsService: STSService) : ConsentService {
         addHandlerChain(
             HandlerChainUtil.buildChainWithValidator(
                 "validation.incoming.wsconsent.message",
-                "/ehealth-hubservices/XSD/hubservices_protocol-2_2.xsd"
+                "/ehealth-hubservices/XSD/hubservices_protocol-2_3.xsd"
             )
         )
         addDefaulHandlerChain()

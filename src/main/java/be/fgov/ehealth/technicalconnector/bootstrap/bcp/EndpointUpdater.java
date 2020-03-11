@@ -44,6 +44,17 @@ public final class EndpointUpdater {
       }
    }
 
+   public static boolean forceUpdate() throws TechnicalConnectorException {
+      String endpoint = determineEndpoint();
+      String onlineSha2 = ConnectorIOUtils.getResourceAsString(endpoint + ".sha2");
+      String content = ConnectorIOUtils.getResourceAsString(endpoint + ".xml");
+      update(content);
+      write(content, loadedXmlLocation);
+      write(onlineSha2, loadedSha2Location);
+      loadedSha2 = onlineSha2;
+      return true;
+   }
+
    private static void write(String content, String location) {
       Validate.notEmpty(location);
       FileOutputStream fos = null;
@@ -107,10 +118,9 @@ public final class EndpointUpdater {
    }
 
    static {
-      loadedSha2Location = System.getProperty("java.io.tmpdir").replaceAll("[/\\\\]?$","") + File.separator + EndpointUpdater.class.getCanonicalName() + ".sha2";
-      loadedXmlLocation = System.getProperty("java.io.tmpdir").replaceAll("[/\\\\]?$","") + File.separator + EndpointUpdater.class.getCanonicalName() + ".xml";
-
       try {
+         loadedSha2Location = ConnectorIOUtils.getTempFileLocation(EndpointUpdater.class.getCanonicalName() + ".sha2");
+         loadedXmlLocation = ConnectorIOUtils.getTempFileLocation(EndpointUpdater.class.getCanonicalName() + ".xml");
          loadedSha2 = ConnectorIOUtils.getResourceAsString(loadedSha2Location);
          update(ConnectorIOUtils.getResourceAsString(loadedXmlLocation));
       } catch (Exception var1) {

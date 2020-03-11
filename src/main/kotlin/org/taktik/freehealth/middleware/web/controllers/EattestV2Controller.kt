@@ -20,6 +20,7 @@
 
 package org.taktik.freehealth.middleware.web.controllers
 
+import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -36,7 +37,7 @@ import java.util.*
 @RestController
 @RequestMapping("/eattestv2")
 class EattestV2Controller(val eattestService: EattestService) {
-    @PostMapping("/send/{patientSsin}/verbose")
+    @PostMapping("/send/{patientSsin}/verbose", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun sendAttestWithResponse(
         @PathVariable patientSsin: String,
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
@@ -50,6 +51,7 @@ class EattestV2Controller(val eattestService: EattestService) {
         @RequestParam patientFirstName: String,
         @RequestParam patientLastName: String,
         @RequestParam patientGender: String,
+        @RequestParam(required = false) treatmentReason: String?,
         @RequestParam(required = false) date: Long?,
         @RequestParam(required = false) traineeSupervisorSsin: String?,
         @RequestParam(required = false) traineeSupervisorNihii: String?,
@@ -67,6 +69,7 @@ class EattestV2Controller(val eattestService: EattestService) {
         hcpFirstName,
         hcpLastName,
         hcpCbe,
+        treatmentReason,
         traineeSupervisorSsin,
         traineeSupervisorNihii,
         traineeSupervisorFirstName,
@@ -83,7 +86,7 @@ class EattestV2Controller(val eattestService: EattestService) {
         attest
     )
 
-    @PostMapping("/send/{patientSsin}")
+    @PostMapping("/send/{patientSsin}", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun sendAttest(
         @PathVariable patientSsin: String,
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
@@ -97,6 +100,7 @@ class EattestV2Controller(val eattestService: EattestService) {
         @RequestParam patientFirstName: String,
         @RequestParam patientLastName: String,
         @RequestParam patientGender: String,
+        @RequestParam(required = false) treatmentReason: String?,
         @RequestParam(required = false) date: Long?,
         @RequestParam(required = false) traineeSupervisorSsin: String?,
         @RequestParam(required = false) traineeSupervisorNihii: String?,
@@ -114,6 +118,7 @@ class EattestV2Controller(val eattestService: EattestService) {
         hcpFirstName,
         hcpLastName,
         hcpCbe,
+        treatmentReason,
         traineeSupervisorSsin,
         traineeSupervisorNihii,
         traineeSupervisorFirstName,
@@ -172,5 +177,49 @@ class EattestV2Controller(val eattestService: EattestService) {
             null,
             eAttestRef,
             reason
-                                   )?.let { SendAttestResult(it.acknowledge, it.invoicingNumber, it.attest) }
+       )?.let { SendAttestResult(it.acknowledge, it.invoicingNumber, it.attest) }
+
+    @DeleteMapping("/send/{patientSsin}/verbose")
+    fun cancelAttesWithResponse(
+        @PathVariable patientSsin: String,
+        @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
+        @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID,
+        @RequestHeader(name = "X-FHC-passPhrase") passPhrase: String,
+        @RequestParam hcpNihii: String,
+        @RequestParam hcpSsin: String,
+        @RequestParam hcpFirstName: String,
+        @RequestParam hcpLastName: String,
+        @RequestParam hcpCbe: String,
+        @RequestParam patientFirstName: String,
+        @RequestParam patientLastName: String,
+        @RequestParam patientGender: String,
+        @RequestParam(required = false) date: Long?,
+        @RequestParam(required = false) traineeSupervisorSsin: String?,
+        @RequestParam(required = false) traineeSupervisorNihii: String?,
+        @RequestParam(required = false) traineeSupervisorFirstName: String?,
+        @RequestParam(required = false) traineeSupervisorLastName: String?,
+        @RequestParam eAttestRef : String,
+        @RequestParam reason : String
+                    ) =
+        eattestService.cancelAttest(
+            keystoreId,
+            tokenId,
+            hcpNihii,
+            hcpSsin,
+            hcpFirstName,
+            hcpLastName,
+            hcpCbe,
+            traineeSupervisorSsin,
+            traineeSupervisorNihii,
+            traineeSupervisorFirstName,
+            traineeSupervisorLastName,
+            passPhrase,
+            patientSsin,
+            patientFirstName,
+            patientLastName,
+            patientGender,
+            null,
+            eAttestRef,
+            reason
+                                   )
 }

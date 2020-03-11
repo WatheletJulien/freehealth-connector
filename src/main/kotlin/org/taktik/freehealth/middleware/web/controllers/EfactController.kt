@@ -22,6 +22,7 @@ package org.taktik.freehealth.middleware.web.controllers
 
 import ma.glasnost.orika.MapperFacade
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -48,8 +49,13 @@ class EfactController(val efactService: EfactService, val mapper: MapperFacade) 
     @ResponseBody
     fun handleBadRequest(req: HttpServletRequest, ex: Exception): String = ex.message ?: "unknown reason"
 
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    @ExceptionHandler(javax.xml.ws.soap.SOAPFaultException::class)
+    @ResponseBody
 
-    @PostMapping("/batch")
+fun handleBadRequest(req: HttpServletRequest, ex: javax.xml.ws.soap.SOAPFaultException): String = ex.message ?: "unknown reason"
+
+@PostMapping("/batch", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun sendBatch(
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
         @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID,
@@ -65,7 +71,7 @@ class EfactController(val efactService: EfactService, val mapper: MapperFacade) 
             isGuardPost = isGuardPost ?: false
         )
 
-    @PostMapping("/flat")
+    @PostMapping("/flat", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun makeFlatFile(
         @RequestBody batch: InvoicesBatch
                     ) =
@@ -74,7 +80,7 @@ class EfactController(val efactService: EfactService, val mapper: MapperFacade) 
             isTest = false
                                  )
 
-    @PostMapping("/flatcore")
+    @PostMapping("/flatcore", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun makeFlatFileCore(
         @RequestBody batch: InvoicesBatch
                     ) =
@@ -83,7 +89,7 @@ class EfactController(val efactService: EfactService, val mapper: MapperFacade) 
             isTest = false
                                  )
 
-    @PostMapping("/flat/test")
+    @PostMapping("/flat/test", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun makeFlatFileTest(
         @RequestBody batch: InvoicesBatch
                         ) =
@@ -92,7 +98,7 @@ class EfactController(val efactService: EfactService, val mapper: MapperFacade) 
             isTest = true
                                  )
 
-    @GetMapping("/{nihii}/{language}")
+    @GetMapping("/{nihii}/{language}", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun loadMessages(
         @PathVariable nihii: String,
         @PathVariable language: String,
@@ -118,7 +124,7 @@ class EfactController(val efactService: EfactService, val mapper: MapperFacade) 
             isGuardPost = isGuardPost ?: false
                                  )
 
-    @PutMapping("/confirm/acks/{nihii}")
+    @PutMapping("/confirm/acks/{nihii}", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun confirmAcks(
         @PathVariable nihii: String,
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
@@ -142,7 +148,7 @@ class EfactController(val efactService: EfactService, val mapper: MapperFacade) 
             isGuardPost = isGuardPost ?: false
         )
 
-    @PutMapping("/confirm/msgs/{nihii}")
+    @PutMapping("/confirm/msgs/{nihii}", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun confirmMessages(
         @PathVariable nihii: String,
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,

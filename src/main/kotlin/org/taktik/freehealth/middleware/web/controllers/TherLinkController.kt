@@ -22,6 +22,7 @@ package org.taktik.freehealth.middleware.web.controllers
 
 import ma.glasnost.orika.MapperFacade
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -33,6 +34,8 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseBody
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.taktik.connector.business.therlink.domain.HasTherapeuticLinkMessage
+import org.taktik.connector.business.therlink.domain.ProofTypeValues
 import org.taktik.freehealth.middleware.dto.therlink.TherapeuticLinkDto
 import org.taktik.freehealth.middleware.dto.therlink.TherapeuticLinkMessageDto
 import org.taktik.freehealth.middleware.exception.MissingTokenException
@@ -48,7 +51,48 @@ class TherLinkController(val therLinkService: TherLinkService, val mapper: Mappe
     @ResponseBody
     fun handleBadRequest(req: HttpServletRequest, ex: Exception): String = ex.message ?: "unknown reason"
 
-    @GetMapping("/{patientSsin}/{hcpNihii}")
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    @ExceptionHandler(javax.xml.ws.soap.SOAPFaultException::class)
+    @ResponseBody
+
+fun handleBadRequest(req: HttpServletRequest, ex: javax.xml.ws.soap.SOAPFaultException): String = ex.message ?: "unknown reason"
+
+@GetMapping("/check/{patientSsin}/{hcpNihii}", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
+    fun hasTherapeuticLink(
+        @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
+        @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID,
+        @RequestHeader(name = "X-FHC-passPhrase") passPhrase: String,
+        @PathVariable hcpNihii: String,
+        @RequestParam hcpSsin: String,
+        @RequestParam hcpFirstName: String,
+        @RequestParam hcpLastName: String,
+        @PathVariable patientSsin: String,
+        @RequestParam patientFirstName: String,
+        @RequestParam patientLastName: String,
+        @RequestParam(required = false) eidCardNumber: String?,
+        @RequestParam(required = false) isiCardNumber: String?,
+        @RequestParam(required = false) startDate: Date?,
+        @RequestParam(required = false) endDate: Date?,
+        @RequestParam(required = false) type: String?
+    ) = therLinkService.hasTherapeuticLink(
+    keystoreId = keystoreId,
+    tokenId = tokenId,
+    passPhrase = passPhrase,
+    hcpNihii = hcpNihii,
+    hcpSsin = hcpSsin,
+    hcpFirstName = hcpFirstName,
+    hcpLastName = hcpLastName,
+    patientSsin = patientSsin,
+    patientFirstName = patientFirstName,
+    patientLastName = patientLastName,
+    eidCardNumber = eidCardNumber,
+    isiCardNumber = isiCardNumber,
+    startDate = startDate,
+    endDate = endDate,
+    therLinkType = type
+    )
+
+    @GetMapping("/{patientSsin}/{hcpNihii}", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun getAllTherapeuticLinks(
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
         @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID,
@@ -85,7 +129,7 @@ class TherLinkController(val therLinkService: TherLinkService, val mapper: Mappe
         sign = sign
     )?.let { mapper.map(it, TherapeuticLinkMessageDto::class.java) }
 
-    @PostMapping("/query")
+    @PostMapping("/query", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun getAllTherapeuticLinksWithQueryLink(
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
         @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID,
@@ -100,7 +144,7 @@ class TherLinkController(val therLinkService: TherLinkService, val mapper: Mappe
         sign = sign
     )?.let { mapper.map(it, TherapeuticLinkMessageDto::class.java) }
 
-    @PostMapping("/check")
+    @PostMapping("/check", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun doesLinkExist(@RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID, @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID, @RequestHeader(name = "X-FHC-passPhrase") passPhrase: String, @RequestBody therLink: TherapeuticLinkDto) =
         therLinkService.doesLinkExist(
             keystoreId = keystoreId,
@@ -109,7 +153,7 @@ class TherLinkController(val therLinkService: TherLinkService, val mapper: Mappe
             therLink = mapper.map(therLink, org.taktik.connector.business.therlink.domain.TherapeuticLink::class.java)
         )?.let { mapper.map(it, TherapeuticLinkDto::class.java) }
 
-    @PostMapping("/register")
+    @PostMapping("/register", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun registerTherapeuticLink(
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
         @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID,
@@ -127,8 +171,9 @@ class TherLinkController(val therLinkService: TherLinkService, val mapper: Mappe
         @RequestParam(required = false) end: Date?,
         @RequestParam(required = false) therLinkType: String?,
         @RequestParam(required = false) comment: String?,
-        @RequestParam(required = false) sign: Boolean?
-    ) = therLinkService.registerTherapeuticLink(
+        @RequestParam(required = false) sign: Boolean?,
+        @RequestParam(required = false) proofType: String?
+                               ) = therLinkService.registerTherapeuticLink(
         keystoreId = keystoreId,
         tokenId = tokenId,
         passPhrase = passPhrase,
@@ -145,10 +190,11 @@ class TherLinkController(val therLinkService: TherLinkService, val mapper: Mappe
         end = end,
         therLinkType = therLinkType,
         comment = comment,
-        sign = sign
+        sign = sign,
+        proofType = proofType?.let { ProofTypeValues.valueOf(it)}
     ).let { mapper.map(it, TherapeuticLinkMessageDto::class.java) }
 
-    @PostMapping("/revoke/{patientSsin}/{hcpNihii}")
+    @PostMapping("/revoke/{patientSsin}/{hcpNihii}", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun revokeLink(
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
         @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID,
@@ -166,7 +212,8 @@ class TherLinkController(val therLinkService: TherLinkService, val mapper: Mappe
         @RequestParam(required = false) end: Date?,
         @RequestParam(required = false) therLinkType: String?,
         @RequestParam(required = false) comment: String?,
-        @RequestParam(required = false) sign: Boolean?
+        @RequestParam(required = false) sign: Boolean?,
+        @RequestParam(required = false) proofType: String?
     ) = therLinkService.revokeLink(
         keystoreId = keystoreId,
         tokenId = tokenId,
@@ -184,21 +231,24 @@ class TherLinkController(val therLinkService: TherLinkService, val mapper: Mappe
         end = end,
         therLinkType = therLinkType,
         comment = comment,
-        sign = sign
+        sign = sign,
+        proofType = proofType?.let { ProofTypeValues.valueOf(it)}
     ).let { mapper.map(it, TherapeuticLinkMessageDto::class.java) }
 
-    @PostMapping("/revoke")
+    @PostMapping("/revoke", produces = [MediaType.APPLICATION_JSON_UTF8_VALUE])
     fun revokeLink(
         @RequestHeader(name = "X-FHC-keystoreId") keystoreId: UUID,
         @RequestHeader(name = "X-FHC-tokenId") tokenId: UUID,
         @RequestHeader(name = "X-FHC-passPhrase") passPhrase: String,
         @RequestBody therLink: TherapeuticLinkDto,
-        @RequestParam(required = false) sign: Boolean?
+        @RequestParam(required = false) sign: Boolean?,
+        @RequestParam(required = false) proofType: String?
     ) = therLinkService.revokeLink(
         keystoreId = keystoreId,
         tokenId = tokenId,
         passPhrase = passPhrase,
         therLink = mapper.map(therLink, org.taktik.connector.business.therlink.domain.TherapeuticLink::class.java),
-        sign = sign
+        sign = sign,
+        proofType = proofType?.let { ProofTypeValues.valueOf(it)}
     ).let { mapper.map(it, TherapeuticLinkMessageDto::class.java) }
 }

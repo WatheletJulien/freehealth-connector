@@ -31,6 +31,7 @@ import org.taktik.connector.technical.exception.TechnicalConnectorException
 import org.taktik.connector.technical.exception.TechnicalConnectorExceptionValues.ERROR_CONFIG
 import org.taktik.connector.technical.exception.TechnicalConnectorExceptionValues.ERROR_ETK_NOTFOUND
 import org.taktik.connector.technical.service.etee.domain.EncryptionToken
+import org.taktik.connector.technical.service.keydepot.KeyDepotService
 import org.taktik.connector.technical.service.sts.SAMLTokenFactory
 import org.taktik.connector.technical.service.sts.domain.SAMLAttribute
 import org.taktik.connector.technical.service.sts.domain.SAMLAttributeDesignator
@@ -38,9 +39,9 @@ import org.taktik.connector.technical.service.sts.security.SAMLToken
 import org.taktik.connector.technical.service.sts.security.impl.KeyStoreCredential
 import org.taktik.connector.technical.service.sts.utils.SAMLHelper
 import org.taktik.connector.technical.utils.CertificateParser
-import org.taktik.connector.technical.utils.IdentifierType
 import org.taktik.freehealth.middleware.domain.sts.SamlTokenResult
 import org.taktik.freehealth.middleware.dto.CertificateInfo
+import org.taktik.freehealth.middleware.exception.MissingKeystoreException
 import org.taktik.freehealth.middleware.service.STSService
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
@@ -58,33 +59,32 @@ import javax.xml.transform.stream.StreamResult
 import javax.xml.transform.stream.StreamSource
 
 @Service
-class STSServiceImpl(val keystoresMap: IMap<UUID, ByteArray>, val tokensMap: IMap<UUID, SamlTokenResult>) : STSService {
+class STSServiceImpl(val keystoresMap: IMap<UUID, ByteArray>, val tokensMap: IMap<UUID, SamlTokenResult>, val keyDepotService: KeyDepotService) : STSService {
     private val log = LogFactory.getLog(this.javaClass)
+
     val freehealthStsService: org.taktik.connector.technical.service.sts.STSService =
         org.taktik.connector.technical.service.sts.impl.STSServiceImpl()
-    val freehealthKeyDepotService: org.taktik.connector.technical.service.keydepot.KeyDepotService =
-        org.taktik.connector.technical.service.keydepot.impl.KeyDepotServiceImpl()
-    val transformer = TransformerFactory.newInstance().newTransformer()
+    val transformerFactory = TransformerFactory.newInstance()
 
-    override fun registerToken(tokenId: UUID, token: String) {
+    override fun registerToken(tokenId: UUID, token: String, quality: String) {
         val factory = DocumentBuilderFactory.newInstance()
         val builder = factory.newDocumentBuilder()
-        val document = builder.parse( InputSource( StringReader(token)))
+        val document = builder.parse(InputSource(StringReader(token)))
         val assertion = document.documentElement
 
         tokensMap[tokenId] =
-            SamlTokenResult(tokenId, token, SAMLHelper.getNotOnOrAfterCondition(assertion).toInstant().millis)
+            SamlTokenResult(tokenId, token, System.currentTimeMillis(), SAMLHelper.getNotOnOrAfterCondition(assertion).toInstant().millis, quality)
         log.info("tokensMap size: ${tokensMap.size}")
     }
 
     override fun getSAMLToken(tokenId: UUID, keystoreId: UUID, passPhrase: String): SAMLToken? {
         return tokensMap[tokenId]?.let {
-            val keyStore = getKeyStore(keystoreId, passPhrase)
+            val keystore = getKeyStore(keystoreId, passPhrase)
             val result = DOMResult()
-            transformer.transform(StreamSource(StringReader(it.token)), result)
-            return result.node?.firstChild?.let {el ->
+            transformerFactory.newTransformer().transform(StreamSource(StringReader(it.token!!)), result)
+            return result.node?.firstChild?.let { el ->
                 SAMLTokenFactory.getInstance()
-                    .createSamlToken(el as Element, KeyStoreCredential(keyStore, "authentication", passPhrase))
+                    .createSamlToken(el as Element, KeyStoreCredential(keystoreId, keystore, "authentication", passPhrase, it.quality))
             }
         }
     }
@@ -93,105 +93,154 @@ class STSServiceImpl(val keystoresMap: IMap<UUID, ByteArray>, val tokensMap: IMa
         keystoreId: UUID,
         nihiiOrSsin: String, //nihii for medical house and niss for doctor
         passPhrase: String,
-        medicalHouse: Boolean,
-        guardPost: Boolean,
+        quality: String,
+        tokenId: UUID?,
         extraDesignators: List<Pair<String, String>>
     ): SamlTokenResult? {
-        val keyStore = getKeyStore(keystoreId, passPhrase)
-        val credential = KeyStoreCredential(keyStore, "authentication", passPhrase)
-        val hokPrivateKeys = KeyManager.getDecryptionKeys(keyStore, passPhrase.toCharArray())
+        val now = System.currentTimeMillis()
+
+        val currentToken = tokenId?.let { id -> tokensMap[id] }
+        val isStillRecommendedForUse = currentToken?.let {
+            val valid = it.validity
+            val ts = it.timestamp
+
+            if (valid == null || ts == null || quality != it.quality) {
+                false
+            } else {
+                val totalValidity = valid - ts
+                val remainingValidity = valid - now
+                remainingValidity > 0 && totalValidity > 0 && remainingValidity.toDouble() / totalValidity.toDouble() > 0.5
+            }
+        } ?: false
+
+        if (isStillRecommendedForUse) return currentToken
+
+        val keystore = getKeyStore(keystoreId, passPhrase)
+        val credential = KeyStoreCredential(keystoreId, keystore, "authentication", passPhrase, quality)
+        val hokPrivateKeys = KeyManager.getDecryptionKeys(keystore, passPhrase.toCharArray())
         val etk = getHolderOfKeysEtk(credential, nihiiOrSsin)
         if (!hokPrivateKeys.containsKey(etk?.certificate?.serialNumber?.toString(10))) {
             throw TechnicalConnectorException(
-                ERROR_CONFIG,"The certificate from the ETK don't match with the one in the encryption keystore"
+                ERROR_CONFIG, "The certificate from the ETK don't match with the one in the encryption keystore"
             )
         }
 
-        val designators = if (medicalHouse) listOf(
-            SAMLAttributeDesignator(
-                "urn:be:fgov:ehealth:1.0:medicalhouse:nihii-number",
-                "urn:be:fgov:identification-namespace"
-            ),
-            SAMLAttributeDesignator(
-                "urn:be:fgov:ehealth:1.0:certificateholder:medicalhouse:nihii-number",
-                "urn:be:fgov:identification-namespace"
-            ),
-            SAMLAttributeDesignator(
-                "urn:be:fgov:ehealth:1.0:certificateholder:medicalhouse:nihii-number",
-                "urn:be:fgov:certified-namespace:ehealth"
+        val designators = when (quality) {
+            "medicalhouse" -> listOf(
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:medicalhouse:nihii-number",
+                    "urn:be:fgov:identification-namespace"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:certificateholder:medicalhouse:nihii-number",
+                    "urn:be:fgov:identification-namespace"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:certificateholder:medicalhouse:nihii-number",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                )
+                ,
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:medicalhouse:nihii-number:recognisedmedicalhouse:nihii11",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                )
             )
-            ,
-            SAMLAttributeDesignator(
-                "urn:be:fgov:ehealth:1.0:medicalhouse:nihii-number:recognisedmedicalhouse:nihii11",
-                "urn:be:fgov:certified-namespace:ehealth"
+            "guardpost" -> listOf(
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:guardpost:nihii-number",
+                    "urn:be:fgov:identification-namespace"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:certificateholder:guardpost:nihii-number",
+                    "urn:be:fgov:identification-namespace"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:certificateholder:guardpost:nihii-number",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:guardpost:nihii-number:recognisedguardpost:nihii11",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:guardpost:nihii-number:recognisedguardpost:boolean",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                )
             )
-        ) else if (guardPost) listOf(
-            SAMLAttributeDesignator(
-            "urn:be:fgov:ehealth:1.0:guardpost:nihii-number",
-            "urn:be:fgov:identification-namespace"
-            ),
-            SAMLAttributeDesignator(
-                "urn:be:fgov:ehealth:1.0:certificateholder:guardpost:nihii-number",
-                "urn:be:fgov:identification-namespace"
-            ),
-            SAMLAttributeDesignator(
-                "urn:be:fgov:ehealth:1.0:certificateholder:guardpost:nihii-number",
-                "urn:be:fgov:certified-namespace:ehealth"
-            ),
-            SAMLAttributeDesignator(
-                "urn:be:fgov:ehealth:1.0:guardpost:nihii-number:recognisedguardpost:nihii11",
-                "urn:be:fgov:certified-namespace:ehealth"
+            "dentist" -> listOf(
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:certificateholder:person:ssin",
+                    "urn:be:fgov:identification-namespace"
+                ),
+                SAMLAttributeDesignator("urn:be:fgov:person:ssin", "urn:be:fgov:identification-namespace"),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:person:ssin:ehealth:1.0:fpsph:dentist:boolean",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:person:ssin:ehealth:1.0:nihii:dentist:nihii11",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:person:ssin:ehealth:1.0:professional:dentist:boolean",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                )
             )
-        )
-        else listOf(
-            SAMLAttributeDesignator(
-                "urn:be:fgov:ehealth:1.0:certificateholder:person:ssin",
-                "urn:be:fgov:identification-namespace"
-            ),
-            SAMLAttributeDesignator("urn:be:fgov:person:ssin", "urn:be:fgov:identification-namespace"),
-            SAMLAttributeDesignator(
-                "urn:be:fgov:person:ssin:doctor:boolean",
-                "urn:be:fgov:certified-namespace:ehealth"
-            ),
-            SAMLAttributeDesignator(
-                "urn:be:fgov:person:ssin:ehealth:1.0:doctor:nihii11",
-                "urn:be:fgov:certified-namespace:ehealth"
-            ),
-            SAMLAttributeDesignator(
-                "urn:be:fgov:person:ssin:ehealth:1.0:fpsph:doctor:boolean",
-                "urn:be:fgov:certified-namespace:ehealth"
+            "doctor" -> listOf(
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:ehealth:1.0:certificateholder:person:ssin",
+                    "urn:be:fgov:identification-namespace"
+                ),
+                SAMLAttributeDesignator("urn:be:fgov:person:ssin", "urn:be:fgov:identification-namespace"),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:person:ssin:doctor:boolean",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:person:ssin:ehealth:1.0:doctor:nihii11",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                ),
+                SAMLAttributeDesignator(
+                    "urn:be:fgov:person:ssin:ehealth:1.0:fpsph:doctor:boolean",
+                    "urn:be:fgov:certified-namespace:ehealth"
+                )
             )
-        ) + extraDesignators.map { SAMLAttributeDesignator(it.second, it.first) }
+            else -> throw IllegalArgumentException("unsupported quality")
+        } + extraDesignators.map { SAMLAttributeDesignator(it.second, it.first) }
 
-        val attributes = if (medicalHouse) listOf(
-            SAMLAttribute(
-                "urn:be:fgov:ehealth:1.0:medicalhouse:nihii-number",
-                "urn:be:fgov:identification-namespace",
-                nihiiOrSsin
-            ),
-            SAMLAttribute(
-                "urn:be:fgov:ehealth:1.0:certificateholder:medicalhouse:nihii-number",
-                "urn:be:fgov:identification-namespace",
-                nihiiOrSsin
+        val attributes = when (quality) {
+            "medicalhouse" -> listOf(
+                SAMLAttribute(
+                    "urn:be:fgov:ehealth:1.0:medicalhouse:nihii-number",
+                    "urn:be:fgov:identification-namespace",
+                    nihiiOrSsin
+                ),
+                SAMLAttribute(
+                    "urn:be:fgov:ehealth:1.0:certificateholder:medicalhouse:nihii-number",
+                    "urn:be:fgov:identification-namespace",
+                    nihiiOrSsin
+                )
             )
-        ) else if (guardPost) listOf(
-            SAMLAttribute(
-                "urn:be:fgov:ehealth:1.0:guardpost:nihii-number",
-                "urn:be:fgov:identification-namespace",
-                nihiiOrSsin
-            ),
-            SAMLAttribute(
-                "urn:be:fgov:ehealth:1.0:certificateholder:guardpost:nihii-number",
-                "urn:be:fgov:identification-namespace",
-                nihiiOrSsin
+            "guardpost" -> listOf(
+                SAMLAttribute(
+                    "urn:be:fgov:ehealth:1.0:guardpost:nihii-number",
+                    "urn:be:fgov:identification-namespace",
+                    nihiiOrSsin
+                ),
+                SAMLAttribute(
+                    "urn:be:fgov:ehealth:1.0:certificateholder:guardpost:nihii-number",
+                    "urn:be:fgov:identification-namespace",
+                    nihiiOrSsin
+                )
             )
-        ) else listOf(
-            SAMLAttribute(
-                "urn:be:fgov:ehealth:1.0:certificateholder:person:ssin",
-                "urn:be:fgov:identification-namespace",
-                nihiiOrSsin
-            ), SAMLAttribute("urn:be:fgov:person:ssin", "urn:be:fgov:identification-namespace", nihiiOrSsin)
-        )
+            else -> listOf(
+                SAMLAttribute(
+                    "urn:be:fgov:ehealth:1.0:certificateholder:person:ssin",
+                    "urn:be:fgov:identification-namespace",
+                    nihiiOrSsin
+                ), SAMLAttribute("urn:be:fgov:person:ssin", "urn:be:fgov:identification-namespace", nihiiOrSsin)
+            )
+        }
 
         return try {
             val assertion =
@@ -202,35 +251,38 @@ class STSServiceImpl(val keystoresMap: IMap<UUID, ByteArray>, val tokensMap: IMa
                     designators,
                     "urn:oasis:names:tc:SAML:1.0:cm:holder-of-key",
                     24
-                                             )
+                )
 
             //Serialize
             val result = StreamResult(StringWriter())
-            transformer.transform(DOMSource(assertion), result)
+            transformerFactory.newTransformer().transform(DOMSource(assertion), result)
             val randomUUID = UUID.randomUUID()
             val samlToken = result.writer.toString()
 
             val samlTokenResult =
-                SamlTokenResult(randomUUID, samlToken, SAMLHelper.getNotOnOrAfterCondition(assertion).toInstant().millis)
+                SamlTokenResult(randomUUID, samlToken, now, SAMLHelper.getNotOnOrAfterCondition(assertion).toInstant().millis, quality)
             tokensMap[randomUUID] = samlTokenResult
             log.info("tokensMap size: ${tokensMap.size}")
 
             samlTokenResult
-        } catch(e:TechnicalConnectorException) {
-            null
+        } catch (e: TechnicalConnectorException) {
+            log.info("STS token request failure: ${e.errorCode} : ${e.message} : ${e.stackTrace}")
+            currentToken // FIXME: should throw if no currentToken
         }
     }
 
     override fun getKeystoreInfo(keystoreId: UUID, passPhrase: String): CertificateInfo {
-        val keyStore = getKeyStore(keystoreId, passPhrase)
-        val credential = KeyStoreCredential(keyStore, "authentication", passPhrase)
+        val keystore = getKeyStore(keystoreId, passPhrase)
+        val credential = KeyStoreCredential(keystoreId, keystore, "authentication", passPhrase, "doctor") //Shouldn't assume but won't be used
         val parser = CertificateParser(credential.certificate)
 
-        return CertificateInfo(parser.validity, parser.type, parser.id, parser.application, parser.owner)
+        return CertificateInfo(credential.certificate.notAfter.time, parser.type, parser.id, parser.application, parser.owner)
     }
 
     override fun checkTokenValid(tokenId: UUID): Boolean {
-        return tokensMap[tokenId]?.let { (it.token?.length ?: 0) > 0 && (it.validity ?: 0) > Instant.now().toEpochMilli() } ?: false
+        return tokensMap[tokenId]?.let {
+            (it.token?.length ?: 0) > 0 && (it.validity ?: 0) > Instant.now().toEpochMilli()
+        } ?: false
     }
 
     override fun getHolderOfKeysEtk(credential: KeyStoreCredential, nihiiOrSsin: String?): EncryptionToken? {
@@ -242,9 +294,19 @@ class STSServiceImpl(val keystoresMap: IMap<UUID, ByteArray>, val tokensMap: IMa
             val identifierValue = parser.id
             val application = parser.application
 
-            this.getEtk(identifierType, java.lang.Long.parseLong(identifierValue), application)
-        } catch (e:java.lang.IllegalStateException) {
-            log.info("Invalid certificate: ${parser.id} : ${parser.identifier} : ${parser.application} - nihii/ssin: ${nihiiOrSsin ?: ""}")
+            this.keyDepotService.getETKSet(
+                identifierType,
+                identifierType.formatIdentifierValue(java.lang.Long.parseLong(identifierValue)),
+                application,
+                credential.keystoreId,
+                true
+            )?.let { if (it.size == 1) it.iterator().next() else null } ?: throw TechnicalConnectorException(
+                ERROR_ETK_NOTFOUND,
+                arrayOfNulls<Any>(0)
+            )
+        } catch (e: java.lang.IllegalStateException) {
+            log.info("Invalid certificate: ${parser.id} : ${parser.identifier} : ${parser.application} - nihii/ssin: ${nihiiOrSsin
+                ?: ""}")
             null
         }
     }
@@ -265,11 +327,11 @@ class STSServiceImpl(val keystoresMap: IMap<UUID, ByteArray>, val tokensMap: IMa
         return keystoreId
     }
 
-    val keystoreCache = CacheBuilder.newBuilder().maximumSize(2000).expireAfterAccess(1, TimeUnit.HOURS).build(object: CacheLoader<Pair<UUID, String>,KeyStore>() {
+    val keystoreCache = CacheBuilder.newBuilder().maximumSize(2000).expireAfterAccess(1, TimeUnit.HOURS).build(object : CacheLoader<Pair<UUID, String>, KeyStore>() {
         override fun load(key: Pair<UUID, String>): KeyStore {
             val keyStoreData =
                 keystoresMap[key.first]
-                    ?: throw(IllegalArgumentException("Missing Keystore, please upload a keystore and use the returned keystoreId"))
+                    ?: throw(MissingKeystoreException("Missing Keystore, please upload a keystore and use the returned keystoreId"))
             return KeyManager.getKeyStore(keyStoreData.inputStream(), "PKCS12", key.second.toCharArray())
         }
     })
@@ -278,19 +340,7 @@ class STSServiceImpl(val keystoresMap: IMap<UUID, ByteArray>, val tokensMap: IMa
         return keystoreCache.get(Pair(keystoreId, passPhrase))
     }
 
-    @Throws(TechnicalConnectorException::class)
-    fun getEtk(identifierType: IdentifierType, identifierValue: Long, application: String): EncryptionToken {
-        return this.freehealthKeyDepotService.getETKSet(
-            identifierType,
-            identifierType.formatIdentifierValue(identifierValue),
-            application
-        )?.let { if (it.size == 1) it.iterator().next() else null } ?: throw TechnicalConnectorException(
-            ERROR_ETK_NOTFOUND,
-            arrayOfNulls<Any>(0)
-        )
-    }
-
-    override fun checkIfKeystoreExist(keystoreId: UUID): Boolean{
+    override fun checkIfKeystoreExist(keystoreId: UUID): Boolean {
         return keystoresMap.get(keystoreId) != null
     }
 
