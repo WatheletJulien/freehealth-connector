@@ -250,9 +250,7 @@ class MemberDataController(val memberDataService: MemberDataService, val mapper:
         @RequestParam hcpNihii: String,
         @RequestParam hcpSsin: String,
         @RequestParam hcpName: String,
-        @RequestParam messageNames: List<String>?
-    ): List<MemberDataResponseDto> {
-        return memberDataService.getMemberDataMessages(
+        @RequestParam messageNames: List<String>?) = memberDataService.getMemberDataMessages(
             keystoreId = keystoreId,
             tokenId = tokenId,
             passPhrase = passPhrase,
@@ -260,6 +258,5 @@ class MemberDataController(val memberDataService: MemberDataService, val mapper:
             hcpSsin = hcpSsin,
             hcpName = hcpName,
             messageNames = messageNames)
-    }
 
 }
