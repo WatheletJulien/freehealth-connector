@@ -24,11 +24,7 @@ import be.cin.encrypted.BusinessContent
 import be.cin.encrypted.EncryptedKnownContent
 import be.cin.mycarenet.esb.common.v2.CommonInput
 import be.cin.mycarenet.esb.common.v2.OrigineType
-import be.cin.nip.async.generic.Get
-import be.cin.nip.async.generic.MsgQuery
-import be.cin.nip.async.generic.Post
-import be.cin.nip.async.generic.PostResponse
-import be.cin.nip.async.generic.Query
+import be.cin.nip.async.generic.*
 import be.cin.types.v1.DetailType
 import be.cin.types.v1.DetailsType
 import be.cin.types.v1.FaultType
@@ -63,6 +59,7 @@ import com.sun.xml.messaging.saaj.soap.impl.ElementImpl
 import com.sun.xml.messaging.saaj.soap.ver1_1.DetailEntry1_1Impl
 import ma.glasnost.orika.MapperFacade
 import net.sf.saxon.xpath.XPathFactoryImpl
+import org.apache.commons.io.IOUtils
 import org.taktik.icure.cin.saml.oasis.names.tc.saml._2_0.assertion.NameIDType
 import org.taktik.icure.cin.saml.oasis.names.tc.saml._2_0.assertion.Subject
 import org.taktik.icure.cin.saml.oasis.names.tc.saml._2_0.assertion.SubjectConfirmation
@@ -87,6 +84,8 @@ import org.taktik.connector.business.mycarenetcommons.mapper.v3.BlobMapper
 import org.taktik.connector.business.mycarenetdomaincommons.builders.BlobBuilderFactory
 import org.taktik.connector.business.mycarenetdomaincommons.builders.RequestBuilderFactory
 import org.taktik.connector.business.mycarenetdomaincommons.domain.Blob
+import org.taktik.connector.business.mycarenetdomaincommons.mapper.DomainBlobMapper
+
 import org.taktik.connector.business.mycarenetdomaincommons.util.McnConfigUtil
 import org.taktik.connector.business.mycarenetdomaincommons.util.PropertyUtil
 import org.taktik.connector.technical.config.ConfigFactory
@@ -287,11 +286,15 @@ class MemberDataServiceImpl(val stsService: STSService, keyDepotService: KeyDepo
         }
     }
 
-    override fun getMemberDataMessages(keystoreId: UUID, tokenId: UUID, passPhrase: String, hcpNihii: String, hcpSsin: String, hcpName: String, messageNames: List<String>?): MemberDataResponseDto {
+    override fun getMemberDataMessages(keystoreId: UUID, tokenId: UUID, passPhrase: String, hcpNihii: String, hcpSsin: String, hcpName: String, messageNames: List<String>?): List<MemberDataResponseDto> {
 
         val samlToken =
             stsService.getSAMLToken(tokenId, keystoreId, passPhrase)
                 ?: throw MissingTokenException("Cannot obtain token for MDA operations")
+        val keystore = stsService.getKeyStore(keystoreId, passPhrase)!!
+        val credential = KeyStoreCredential(keystoreId, keystore, "authentication", passPhrase, samlToken.quality)
+        val hokPrivateKeys = KeyManager.getDecryptionKeys(keystore, passPhrase.toCharArray())
+        val crypto = CryptoFactory.getCrypto(credential, hokPrivateKeys)
 
         val getHeader = WsAddressingHeader(URI("urn:be:cin:nip:async:generic:get:query")).apply {
             messageID = URI(IdGeneratorFactory.getIdGenerator("uuid").generateId())
@@ -311,9 +314,27 @@ class MemberDataServiceImpl(val stsService: STSService, keyDepotService: KeyDepo
         }
         val response = genAsyncService.getRequest(samlToken, get, getHeader)
 
-        val b64 = Base64.getEncoder()
+        val marshallerHelper = MarshallerHelper(MemberDataResponse::class.java, MemberDataResponse::class.java)
 
-        return MemberDataResponseDto()
+
+        val b64 = Base64.getEncoder()
+        val responses = response.getReturn().msgResponses?.map{it ->
+            var mdaResponse = MemberDataResponse()
+            try{
+                //ConnectorXmlUtils.toString
+                val blob = DomainBlobMapper.mapToBlob(it.getDetail())
+                var data: ByteArray? = blob.content
+                val unsealedData = crypto.unseal(Crypto.SigningPolicySelector.WITHOUT_NON_REPUDIATION, data).contentAsByte
+                val encryptedKnownContent = MarshallerHelper(EncryptedKnownContent::class.java, EncryptedKnownContent::class.java).toObject(unsealedData)
+                mdaResponse =  marshallerHelper.toObject(encryptedKnownContent.businessContent.value)
+            } finally {
+                return@map mdaResponse
+            }
+        }
+
+        print(responses)
+
+        return emptyList();
     }
 
     private fun buildOriginType(nihii: String, ssin: String, firstname: String, lastname: String): OrigineType =

@@ -69,5 +69,5 @@ interface MemberDataService {
         hcpSsin: String,
         hcpName: String,
         messageNames: List<String>?
-    ): MemberDataResponseDto
+    ): List<MemberDataResponseDto>
 }
