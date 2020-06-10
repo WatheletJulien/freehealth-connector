@@ -96,6 +96,7 @@ import org.taktik.connector.technical.service.etee.CryptoFactory
 import org.taktik.connector.technical.service.keydepot.KeyDepotService
 import org.taktik.connector.technical.service.keydepot.impl.KeyDepotManagerImpl
 import org.taktik.connector.technical.service.sts.security.impl.KeyStoreCredential
+import org.taktik.connector.technical.utils.ConnectorIOUtils
 import org.taktik.connector.technical.utils.ConnectorXmlUtils
 import org.taktik.connector.technical.utils.IdentifierType
 import org.taktik.connector.technical.utils.MarshallerHelper
@@ -112,6 +113,7 @@ import org.taktik.freehealth.middleware.service.STSService
 import org.taktik.icure.cin.saml.extensions.AttributeQueryList
 import org.taktik.icure.cin.saml.extensions.ExtensionsType
 import org.taktik.icure.cin.saml.extensions.Facet
+import org.taktik.icure.cin.saml.extensions.ResponseList
 import org.taktik.icure.cin.saml.oasis.names.tc.saml._2_0.protocol.Response
 import org.w3c.dom.Element
 import org.w3c.dom.Node
@@ -312,25 +314,22 @@ class MemberDataServiceImpl(val stsService: STSService, keyDepotService: KeyDepo
         }
         val response = genAsyncService.getRequest(samlToken, get, getHeader)
 
-        val marshallerHelper = MarshallerHelper(MemberDataResponse::class.java, MemberDataResponse::class.java)
-
 
         val b64 = Base64.getEncoder()
-        val responses = response.getReturn().msgResponses?.map{it ->
-            var mdaResponse = MemberDataResponse()
-            try{
-                //ConnectorXmlUtils.toString
-                val blob = DomainBlobMapper.mapToBlob(it.getDetail())
-                var data: ByteArray? = blob.content
-                val unsealedData = crypto.unseal(Crypto.SigningPolicySelector.WITHOUT_NON_REPUDIATION, data).contentAsByte
-                val encryptedKnownContent = MarshallerHelper(EncryptedKnownContent::class.java, EncryptedKnownContent::class.java).toObject(unsealedData)
-                mdaResponse =  marshallerHelper.toObject(encryptedKnownContent.businessContent.value)
-            } finally {
-                return@map mdaResponse
+
+        response.`return`.msgResponses?.map{it ->
+            val blob = DomainBlobMapper.mapToBlob(it.detail)
+            var data: ByteArray? = blob.content
+            val unsealedData = crypto.unseal(Crypto.SigningPolicySelector.WITHOUT_NON_REPUDIATION, data).contentAsByte
+            val encryptedKnownContent = MarshallerHelper(EncryptedKnownContent::class.java, EncryptedKnownContent::class.java).toObject(unsealedData)
+            val responseList = MarshallerHelper(ResponseList::class.java, ResponseList::class.java).toObject(
+                if(encryptedKnownContent.businessContent.contentEncoding == "deflate")
+                    ConnectorIOUtils.decompress(encryptedKnownContent.businessContent.value) else encryptedKnownContent.businessContent.value
+            )
+            responseList.responses.map {
+                it
             }
         }
-
-        print(responses)
     }
 
     private fun buildOriginType(nihii: String, ssin: String, firstname: String, lastname: String): OrigineType =
