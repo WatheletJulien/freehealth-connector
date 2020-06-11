@@ -327,6 +327,36 @@ class MemberDataServiceImpl(val stsService: STSService, keyDepotService: KeyDepo
                     ConnectorIOUtils.decompress(encryptedKnownContent.businessContent.value) else encryptedKnownContent.businessContent.value
             )
             responseList.responses.map {
+                it.status?.statusDetail?.anies?.map {
+                    FaultType().apply {
+                        faultCode = it.getElementsByTagNameWithOrWithoutNs("urn:be:cin:types:v1", "FaultCode").item(0)?.textContent
+                        faultSource = it.getElementsByTagNameWithOrWithoutNs("urn:be:cin:types:v1", "FaultSource").item(0)?.textContent
+                        message = it.getElementsByTagNameWithOrWithoutNs("urn:be:cin:types:v1", "Message").item(0)?.let {
+                            StringLangType().apply {
+                                value = it.textContent
+                                lang = it.attributes.getNamedItem("lang")?.textContent
+                            }
+                        }
+
+                        it.getElementsByTagNameWithOrWithoutNs("urn:be:cin:types:v1", "Detail").let {
+                            if (it.length > 0) { details = DetailsType() }
+                            for (i in 0 until it.length) {
+                                details.details.add(DetailType().apply {
+                                    it.item(i).let {
+                                        detailCode = (it as Element).getElementsByTagNameWithOrWithoutNs("urn:be:cin:types:v1", "DetailCode").item(0)?.textContent
+                                        detailSource = it.getElementsByTagNameWithOrWithoutNs("urn:be:cin:types:v1", "DetailSource").item(0)?.textContent
+                                        location = it.getElementsByTagNameWithOrWithoutNs("urn:be:cin:types:v1", "Location").item(0)?.textContent
+                                        message = it.getElementsByTagNameWithOrWithoutNs("urn:be:cin:types:v1", "Message").item(0)?.let {
+                                            StringLangType().apply {
+                                                value = it.textContent
+                                                lang = it.attributes.getNamedItem("lang")?.textContent
+                                            } }
+                                    }
+                                })
+                            }
+
+                        }
+                    }}
                 it
             }
         }
