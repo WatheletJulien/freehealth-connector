@@ -47,7 +47,7 @@ class MemberDataAsyncControllerTest: EhealthTest() {
     fun sendMemberDataRequest() {
         val (keystoreId, tokenId, passPhrase) = registerMmH(restTemplate!!, port, nihii5!!, password5!!)
         val str = this.restTemplate.exchange("http://localhost:$port/mda/async/request/900" +
-            "?hcpNihii=$nihii5" +
+            "?hcpNihii=$nihii5"+"111" +
             "&hcpSsin=$ssin5" +
             "&hcpName={name5}" +
             "&hcpQuality=medicalhouse",
