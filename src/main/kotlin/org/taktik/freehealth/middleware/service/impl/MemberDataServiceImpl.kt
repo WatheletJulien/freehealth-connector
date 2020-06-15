@@ -172,7 +172,6 @@ class MemberDataServiceImpl(val stsService: STSService, keyDepotService: KeyDepo
         tokenId: UUID,
         hcpQuality: String,
         hcpNihii: String,
-        hcpSsin: String,
         hcpName: String,
         requestType: String,
         io: String?,
@@ -272,7 +271,6 @@ class MemberDataServiceImpl(val stsService: STSService, keyDepotService: KeyDepo
                             }
                         physicalPerson = be.cin.mycarenet.esb.common.v2.IdType().apply {
                             name = be.cin.mycarenet.esb.common.v2.ValueRefString().apply { value = hcpName }
-                            ssin = be.cin.mycarenet.esb.common.v2.ValueRefString().apply { value = hcpSsin }
                             nihii = be.cin.mycarenet.esb.common.v2.NihiiType().apply {
                                 quality = hcpQuality; value =
                                 be.cin.mycarenet.esb.common.v2.ValueRefString().apply { value = hcpNihii }

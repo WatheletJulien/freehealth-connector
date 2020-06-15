@@ -51,7 +51,6 @@ interface MemberDataService {
         tokenId: UUID,
         hcpQuality: String,
         hcpNihii: String,
-        hcpSsin: String,
         hcpName: String,
         requestType: String = "information",
         io: String?,

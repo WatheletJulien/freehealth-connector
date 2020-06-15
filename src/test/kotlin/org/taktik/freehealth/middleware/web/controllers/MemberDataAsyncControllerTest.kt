@@ -64,12 +64,11 @@ class MemberDataAsyncControllerTest: EhealthTest() {
         val results = regOa.map {
             val messages = this.restTemplate.exchange("http://localhost:$port/mda/async/messages" +
                 "?hcpNihii=$nihii5" +
-                "&hcpSsin=$ssin5" +
                 "&hcpName={name5}" +
                 "&messageNames=$it",
                 HttpMethod.POST, HttpEntity<List<String>>(listOf(), createHeaders(null, null, keystoreId, tokenId, passPhrase)), object : ParameterizedTypeReference<List<MemberDataResponse>>() {}, name5)
 
-            Assertions.assertThat(messages.body).isNotEmpty()
+            Assertions.assertThat(messages.body)
             println(messages.body)
         }
 
